@@ -8,7 +8,7 @@ from . import api_services # Use relative import
 
 def _choose_best_template_with_llm(user_intent: str, templates: list) -> dict | None:
     """Helper function to use an LLM to semantically choose the best template."""
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.0)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.0)
     # Provide only name and UID for the LLM to choose from.
     template_summaries = json.dumps([{"uid": t["uid"], "name": t["name"]} for t in templates])
     
@@ -38,7 +38,7 @@ def _choose_best_template_with_llm(user_intent: str, templates: list) -> dict | 
 
 def _create_modifications_with_llm(property_data: dict, template: dict) -> List[Dict[str, Any]]:
     """Helper function to use an LLM for intelligent data mapping."""
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.0)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.0)
     # We only need to show the LLM the layers it can modify
     modifiable_layers = template.get('available_modifications', [])
 
