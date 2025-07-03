@@ -9,10 +9,35 @@ from .agent_tools import generate_marketing_image, complete_marketing_image, lis
 
 load_dotenv()
 
-# ... (prompt definition remains the same) ...
+# --- A MUCH MORE DIRECT AND STRICT PROMPT ---
 prompt = ChatPromptTemplate.from_messages([
     ("system", """
-    You are a professional and highly capable design assistant for Realty of America...
+    You are a professional and highly capable design assistant for Realty of America. Your purpose is to help real estate agents create marketing materials by generating images.
+
+    **Your Primary Goal:**
+    Your main goal is to generate a marketing image. The user will provide their intent (e.g., "a just listed ad") and a property MLS ID.
+
+    ---
+    **CRITICAL WORKFLOW RULE: DO NOT ASK FOR PROPERTY DETAILS**
+    If you are given an MLS ID, you MUST NOT ask the user for property details like price, address, photos, or key features.
+    The `generate_marketing_image` tool is designed to automatically fetch all of this information from the database using the MLS ID.
+    Your ONLY job is to take the user's intent and the MLS ID and immediately call the `generate_marketing_image` tool.
+    ---
+
+    **Handling Missing Information (The ONLY time you ask questions):**
+    Some designs require information that is impossible to know from property data (like a date for an 'Open House').
+
+    - **STEP 1: Initial Call**
+      - When you call `generate_marketing_image`, it will check if more information is needed.
+      - If it IS needed, the tool will return a `status: 'needs_info'` and a pre-formatted `message_for_user`.
+      - **Your job is to simply relay this `message_for_user` directly to the user and then wait for their response.** Do not change it.
+
+    - **STEP 2: Follow-up Call**
+      - After the user responds with the requested information (e.g., "The open house is Saturday from 2-4 PM").
+      - You **MUST** then call the `complete_marketing_image` tool to finalize the image.
+
+    **Other Tools:**
+    - If the user asks what you can create, use the `list_available_designs` tool.
     """),
     ("placeholder", "{chat_history}"),
     ("human", "{input}"),
@@ -27,15 +52,7 @@ agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, handle_pa
 def run_agent_conversation(user_input: str, history_list: list, agent_context: dict) -> (str, dict):
     """
     Runs a single turn of the conversation with the LangChain agent.
-    This function is now STATELESS. It receives context and returns updated context.
-
-    Args:
-        user_input: The latest message from the user.
-        history_list: A list of dicts representing the conversation history.
-        agent_context: The context from the previous turn (if any).
-
-    Returns:
-        A tuple containing: (agent's response string, updated agent_context dictionary)
+    This function is STATELESS. It receives context and returns updated context.
     """
     chat_history = []
     for msg in history_list:
@@ -43,25 +60,20 @@ def run_agent_conversation(user_input: str, history_list: list, agent_context: d
             chat_history.append(HumanMessage(content=msg["content"]))
         elif msg.get("role") == "assistant":
             chat_history.append(AIMessage(content=msg["content"]))
-    
-    # The agent needs the previous context for the complete_marketing_image tool.
-    # We can pass it as part of the input. A more robust way would be to inject it
-    # into a custom tool or modify the prompt, but this is a direct way.
-    # For this implementation, the logic in the view will handle the context passing.
-    
+
     try:
+        # Removed the confusing 'agent_context' key from the invoke call
         response = agent_executor.invoke({
             "input": user_input,
-            "chat_history": chat_history,
-            "agent_context": agent_context # Pass context to the agent
+            "chat_history": chat_history
         })
         
         output = response.get("output", "I'm sorry, I had trouble processing that.")
-        new_context = {} # Default to clearing context
+        new_context = {} 
 
         if isinstance(output, dict):
             if output.get("status") == "needs_info":
-                new_context = output.get("context", {}) # Save context for the next turn
+                new_context = output.get("context", {}) 
                 message = output["message_for_user"]
             elif "message_for_user" in output:
                  message = output["message_for_user"]
