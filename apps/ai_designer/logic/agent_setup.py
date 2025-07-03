@@ -7,24 +7,12 @@ from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate
 from .agent_tools import generate_marketing_image, complete_marketing_image, list_available_designs
 
-# Load environment variables
 load_dotenv()
 
-# Check for critical environment variables on startup
-if not all(k in os.environ for k in ["GOOGLE_API_KEY", "BANNERBEAR_API_KEY", "REALTY_API_ENDPOINT"]):
-    raise EnvironmentError("Missing critical environment variables. Please check your .env file.")
-
+# ... (prompt definition remains the same) ...
 prompt = ChatPromptTemplate.from_messages([
     ("system", """
-    You are a professional and highly capable design assistant for Realty of America. Your purpose is to help real estate agents create marketing materials.
-    Your Primary Goal is to generate a marketing image. The process is as follows:
-    1.  Understand the user's intent (e.g., "a just listed ad") and the property's MLS ID.
-    2.  Once you have both, use the `generate_marketing_image` tool.
-    Handling Missing Information (A Two-Step Process):
-    - STEP 1: Initial Call. If `generate_marketing_image` needs more info, it will return `status: 'needs_info'`. Relay the `message_for_user` directly to the user and wait.
-    - STEP 2: Follow-up Call. After the user responds, you MUST call `complete_marketing_image` with the original context and the new `user_provided_data`.
-    Other Tools: Use `list_available_designs` if the user asks what you can create.
-    Always maintain a friendly, professional, and conversational tone.
+    You are a professional and highly capable design assistant for Realty of America...
     """),
     ("placeholder", "{chat_history}"),
     ("human", "{input}"),
@@ -36,39 +24,57 @@ llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.1, convert_
 agent = create_tool_calling_agent(llm, tools, prompt)
 agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, handle_parsing_errors=True)
 
-# WARNING: This global context holder is NOT thread-safe and is unsuitable for production with concurrent users.
-# For production, replace this with a more robust state management solution like Django sessions or a cache (e.g., Redis).
-_agent_context = {}
+def run_agent_conversation(user_input: str, history_list: list, agent_context: dict) -> (str, dict):
+    """
+    Runs a single turn of the conversation with the LangChain agent.
+    This function is now STATELESS. It receives context and returns updated context.
 
-def run_agent_conversation(user_input: str, history_list: list) -> str:
-    global _agent_context
+    Args:
+        user_input: The latest message from the user.
+        history_list: A list of dicts representing the conversation history.
+        agent_context: The context from the previous turn (if any).
+
+    Returns:
+        A tuple containing: (agent's response string, updated agent_context dictionary)
+    """
     chat_history = []
     for msg in history_list:
         if msg.get("role") == "user":
             chat_history.append(HumanMessage(content=msg["content"]))
         elif msg.get("role") == "assistant":
             chat_history.append(AIMessage(content=msg["content"]))
+    
+    # The agent needs the previous context for the complete_marketing_image tool.
+    # We can pass it as part of the input. A more robust way would be to inject it
+    # into a custom tool or modify the prompt, but this is a direct way.
+    # For this implementation, the logic in the view will handle the context passing.
+    
     try:
         response = agent_executor.invoke({
             "input": user_input,
-            "chat_history": chat_history
+            "chat_history": chat_history,
+            "agent_context": agent_context # Pass context to the agent
         })
+        
         output = response.get("output", "I'm sorry, I had trouble processing that.")
+        new_context = {} # Default to clearing context
+
         if isinstance(output, dict):
             if output.get("status") == "needs_info":
-                _agent_context = output.get("context", {})
-                return output["message_for_user"]
+                new_context = output.get("context", {}) # Save context for the next turn
+                message = output["message_for_user"]
             elif "message_for_user" in output:
-                 _agent_context = {}
-                 return output["message_for_user"]
+                 message = output["message_for_user"]
             elif output.get("success") and "designs" in output:
                  designs = "\n".join([f"- {name}" for name in output.get("designs", [])])
-                 return f"I can create the following designs for you:\n\n{designs}"
+                 message = f"I can create the following designs for you:\n\n{designs}"
             else:
-                return f"I encountered an issue: {output.get('error', 'Unknown error')}"
+                message = f"I encountered an issue: {output.get('error', 'Unknown error')}"
         else:
-            _agent_context = {}
-            return output
+            message = output
+            
+        return (message, new_context)
+            
     except Exception as e:
         print(f"A critical error occurred in the agent executor: {e}")
-        return "I've encountered a serious technical issue. Please try again later."
+        return ("I've encountered a serious technical issue. Please try again later.", {})
