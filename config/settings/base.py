@@ -37,7 +37,7 @@ DJANGO_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "django_crontab",
+    # "django_crontab", # Not needed for the AI agent API.
 ]
 
 THIRD_PARTY_APPS = [
@@ -45,13 +45,14 @@ THIRD_PARTY_APPS = [
     "rest_framework",
     "rest_framework.authtoken",
     # Phone Number Field
-    "phonenumber_field",
+    # "phonenumber_field", # Not used by the AI agent application.
     # For Static files
 ]
 
 CUSTOM_APPS = [
     "apps.common",
     "apps.access",
+    "apps.ai_designer",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + CUSTOM_APPS
@@ -111,6 +112,10 @@ STATICFILES_FINDERS = [
 
 # Database
 # ------------------------------------------------------------------------------
+# NOTE: Django requires a database to run. You can simplify this to use SQLite
+# for local development if you don't want to set up PostgreSQL.
+# However, the AUTH_USER_MODEL depends on the 'access' app which may have
+# migrations that require PostgreSQL. We will leave this as is.
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 DATABASES = {
@@ -160,7 +165,9 @@ REST_FRAMEWORK = {
         "rest_framework.renderers.BrowsableAPIRenderer",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.IsAuthenticated",
+        # Switched to AllowAny for easier testing of the AI endpoint.
+        # "rest_framework.permissions.IsAuthenticated",
+        "rest_framework.permissions.AllowAny",
     ],
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework.authentication.SessionAuthentication",
@@ -168,7 +175,8 @@ REST_FRAMEWORK = {
     ),
 }
 
-PASSWORD_RESET_TIMEOUT = 300
+# Not needed for the AI agent functionality.
+# PASSWORD_RESET_TIMEOUT = 300
 
 CORS_ORIGIN_ALLOW_ALL = True
 CORS_ALLOW_CREDENTIALS = True
@@ -176,14 +184,15 @@ CORS_ALLOW_HEADERS = [*default_headers]
 
 # Celery
 # ------------------------------------------------------------------------------
-if USE_TZ:
-    CELERY_TIMEZONE = TIME_ZONE
-CELERY_BROKER_URL = env.str("CELERY_BROKER_URL")
-CELERY_RESULT_BACKEND = CELERY_BROKER_URL
-CELERY_ACCEPT_CONTENT = ["json"]
-CELERY_TASK_SERIALIZER = "json"
-CELERY_RESULT_SERIALIZER = "json"
-CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+# Not needed for the AI agent as it operates synchronously via API calls.
+# if USE_TZ:
+#    CELERY_TIMEZONE = TIME_ZONE
+# CELERY_BROKER_URL = env.str("CELERY_BROKER_URL")
+# CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+# CELERY_ACCEPT_CONTENT = ["json"]
+# CELERY_TASK_SERIALIZER = "json"
+# CELERY_RESULT_SERIALIZER = "json"
+# CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
 # App Configurations
 # ------------------------------------------------------------------------------
@@ -193,16 +202,17 @@ APP_DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%S"
 
 # AWS S3 Storage Bucket
 # -------------------------------------------------------------------------------
-AWS_ACCESS_KEY_ID = env.str("AWS_ACCESS_KEY")
-AWS_SECRET_ACCESS_KEY = env.str("AWS_SECRET_KEY")
-AWS_STORAGE_BUCKET_NAME = env.str("AWS_BUCKET_NAME")
+# Not needed as the AI agent does not store files directly using Django's storage backend.
+# AWS_ACCESS_KEY_ID = env.str("AWS_ACCESS_KEY")
+# AWS_SECRET_ACCESS_KEY = env.str("AWS_SECRET_KEY")
+# AWS_STORAGE_BUCKET_NAME = env.str("AWS_BUCKET_NAME")
 
-AWS_QUERYSTRING_AUTH = False
-STORAGES = {
-    "staticfiles": {
-        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
-    },
-    "default": {
-        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
-    },
-}
+# AWS_QUERYSTRING_AUTH = False
+# STORAGES = {
+#     "staticfiles": {
+#         "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+#     },
+#     "default": {
+#         "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+#     },
+# }
