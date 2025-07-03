@@ -289,3 +289,10 @@ During development, we encountered several common setup issues. This section doc
     pip install redis==3.5.3
     ```
     This is why the `requirements.txt` file explicitly lists `redis==3.5.3`.
+
+
+
+Local run:
+celery -A config.celery_app worker -l info
+
+python manage.py runserver
