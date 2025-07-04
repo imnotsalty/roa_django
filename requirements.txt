@@ -36,12 +36,9 @@ psycopg2-binary==2.9.9
 langchain
 langchain-google-genai
 python-dotenv
-requests
 pydantic
 
 # Add these lines to requirements.txt
-celery
 redis
-
 dj-database-url
 

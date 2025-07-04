@@ -33,11 +33,11 @@ def fetch_template_by_uid(api_key: str, uid: str):
         print(f"Error: Could not fetch template details for {uid}. Error: {e}")
         return None
 
-def fetch_realty_details(mls_id: str):
+def fetch_realty_details(mls_listing_id: str, mls_id: str):
     endpoint = os.environ.get("REALTY_API_ENDPOINT")
     if not endpoint: raise ValueError("REALTY_API_ENDPOINT not set.")
     headers = {'Content-Type': 'application/json', 'x-tenant-code': 'ROA'}
-    payload = {"size": 1, "mlses": [386], "mls_listings": [str(mls_id)], "view": "detailed"}
+    payload = {"size": 1, "mlses": [int(mls_id)], "mls_listings": [str(mls_listing_id)], "view": "detailed"}
     response = requests.post(endpoint, headers=headers, json=payload, timeout=20)
     response.raise_for_status()
     data = response.json()
@@ -66,13 +66,14 @@ def poll_for_image(api_key: str, polling_url: str):
         time.sleep(2)
     return None
 
-def upload_image(image_url: str):
-    api_key = os.environ.get("FREEIMAGE_API_KEY")
-    if not api_key: return image_url
-    payload = {'key': api_key, 'action': 'upload', 'source': image_url, 'format': 'json'}
-    try:
-        response = requests.post("https://freeimage.host/api/1/upload", data=payload, timeout=30)
-        data = response.json()
-        return data.get("image", {}).get("url", image_url)
-    except Exception:
-        return image_url
+# def upload_image(image_url: str):
+#     api_key = os.environ.get("FREEIMAGE_API_KEY")
+#     if not api_key: return image_url
+#     payload = {'key': api_key, 'action': 'upload', 'source': image_url, 'format': 'json'}
+#     try:
+#         response = requests.post("https://freeimage.host/api/1/upload", data=payload, timeout=30)
+#         data = response.json()
+#         return data.get("image", {}).get("url", image_url)
+#     except Exception:
+#         return image_url
+

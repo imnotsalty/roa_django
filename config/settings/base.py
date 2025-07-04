@@ -21,7 +21,7 @@ CSRF_TRUSTED_ORIGINS = ["http://localhost"]
 # Environment Helpers
 # ------------------------------------------------------------------------------
 env = environ.Env()
-env.read_env(str(ROOT_DIR / ".env"))
+env.read_env(str(ROOT_DIR / ".env")) # Might be edited to .env.example
 
 # Timezone & Localization
 # ------------------------------------------------------------------------------

@@ -8,7 +8,7 @@ from . import api_services # Use relative import
 
 def _choose_best_template_with_llm(user_intent: str, templates: list) -> dict | None:
     """Helper function to use an LLM to semantically choose the best template."""
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.0)
+    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.0)
     # Provide only name and UID for the LLM to choose from.
     template_summaries = json.dumps([{"uid": t["uid"], "name": t["name"]} for t in templates])
     
@@ -38,12 +38,44 @@ def _choose_best_template_with_llm(user_intent: str, templates: list) -> dict | 
 
 def _create_modifications_with_llm(property_data: dict, template: dict) -> List[Dict[str, Any]]:
     """Helper function to use an LLM for intelligent data mapping."""
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.0)
+    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.0)
     # We only need to show the LLM the layers it can modify
     modifiable_layers = template.get('available_modifications', [])
 
+    # The mapping and example are now part of the prompt for the LLM's reference
     prompt = f"""
-    You are an expert data mapper for a real estate design tool. Your only job is to create a JSON list of modifications by mapping the provided PROPERTY DATA to the LAYERS of the provided TEMPLATE.
+    You are an expert data mapper for a real estate design tool. Your only job is to create a JSON list of modifications by mapping the provided PROPERTY DATA to the modifiable LAYERS of the provided TEMPLATE.
+
+    ---
+    DATA MAPPING GUIDE:
+    Use this guide to understand how to map TEMPLATE layer names to the data paths in the PROPERTY DATA.
+    The key is the template layer name, and the value is the dot-notation path to the data.
+
+    {{
+        "property_address": "address",
+        "city": "city",
+        "state": "state",
+        "zip": "zip",
+        "property_price": "price_display",
+        "description": "description",
+        "bedrooms": "bedrooms",
+        "bathrooms": "bathrooms",
+        "square_feet": "square_feet",
+        "agent_name": "agents.listing_agent.name",
+        "agent_contact": "agents.listing_agent.phone",
+        "agent_email": "agents.listing_agent.email",
+        "neighborhood": "geo_data.neighborhood_name",
+        "brokerage_name": "agents.listing_agent.office.name",
+        "property_type": "property_type",
+        "property_image": "hero.large",
+        "photo1": "photos[1].large",
+        "photo2": "photos[2].large",
+        "photo3": "photos[3].large",
+        "agent_photo": null
+    }}
+
+    TASK:
+    Based on the rules and data, generate the JSON list of modifications for the following request.
 
     PROPERTY DATA:
     {json.dumps(property_data, indent=2)}
@@ -53,13 +85,13 @@ def _create_modifications_with_llm(property_data: dict, template: dict) -> List[
 
     Instructions:
     1.  Create a JSON list of "modifications". Each modification is an object with "name" and "text" or "image_url".
-    2.  Match property data fields to template layer names logically and semantically. For example, map `property_data['listPrice']` to a layer named `price_text`.
+    2.  Use the `DATA MAPPING GUIDE` and the live `PROPERTY DATA` to find the correct values for the layers listed in the `TEMPLATE`.
     3.  **Formatting is critical:**
-        - Format the `listPrice` with a dollar sign and commas (e.g., "$1,250,000").
-        - Combine `city`, `state`, and `postalCode` for any address or location layer.
-        - Combine `bedrooms` and `bathrooms` into a single string like "4 Beds | 3 Baths" if there is a layer for it (e.g., `beds_baths`).
-    4.  For images, use the first photo URL from the `property_data['photos']` list for any layer named `photo`, `main_image`, or `property_image`.
-    5.  If the property data contains fields that match user-provided keys (like `open_house_date`, `open_house_time`, `custom_headline`), map them to the corresponding template layers.
+        - The `price_display` field is already formatted. Use it directly for any price layer.
+        - Combine `city`, `state`, and `zip` for any full address or location layer if one exists.
+        - Combine `bedrooms` and `bathrooms` into a single string like "2 Beds | 2.0 Baths" if a layer like `beds_baths` exists.
+    4.  For image layers (e.g., `property_image`, `photo1`), use the `DATA MAPPING GUIDE` to find the correct path in the `PROPERTY DATA` and get the image URL.
+    5.  If the `PROPERTY DATA` contains extra fields provided by the user (like `open_house_date`, `open_house_time`, `custom_headline`), map them directly to the corresponding template layers.
     6.  Do not invent data. If a value for a layer isn't available in the property data, simply omit that layer from your list.
     7.  Respond ONLY with the raw JSON list. Do not add any other text, explanations, or markdown formatting like ```json.
     """
@@ -111,21 +143,24 @@ def list_available_designs() -> Dict[str, Any]:
         return {"success": False, "error": f"An API error occurred: {e}"}
 
 class AdGeneratorInput(BaseModel):
-    mls_id: str = Field(description="The unique Multiple Listing Service ID for the property.")
+    mls_listing_id: str = Field(description="The unique Multiple Listing Service ID for the property.")
+    mls_id: str = Field(description = "3 digit ID that represents all the listings in a specific region.")
     user_intent: str = Field(description="The user's stated goal, e.g., 'a just listed ad' or 'an open house announcement'.")
 
+
 @tool(args_schema=AdGeneratorInput)
-def generate_marketing_image(mls_id: str, user_intent: str) -> Dict[str, Any]:
+def generate_marketing_image(mls_listing_id: str, mls_id: str, user_intent: str) -> Dict[str, Any]:
     """
-    Call this tool to generate a marketing image. This tool will automatically fetch all necessary property details (price, address, photos, etc.) using the MLS ID. You do not need to ask the user for this information. The tool will either generate the image directly or ask for more information (like an open house date) if the chosen template requires it.
+    Call this tool to generate a marketing image. This tool will automatically fetch all necessary property details (price, address, photos, etc.) using the MLS Listing ID and MLS ID. You do not need to ask the user for this information. The tool will either generate the image directly or ask for more information (like an open house date) if the chosen template requires it.
     """
     try:
         api_key = os.environ["BANNERBEAR_API_KEY"]
         templates = api_services.fetch_all_template_details(api_key)
-        property_data = api_services.fetch_realty_details(mls_id)
+        property_data = api_services.fetch_realty_details(mls_listing_id, mls_id)
+        
 
         if not templates: return {"status": "error", "message_for_user": "I couldn't find any design templates."}
-        if not property_data: return {"status": "error", "message_for_user": f"I couldn't find data for MLS ID {mls_id}."}
+        if not property_data: return {"status": "error", "message_for_user": f"I couldn't find data for MLS Listing ID {mls_listing_id} in MLS {mls_id}."}
 
         best_template = _choose_best_template_with_llm(user_intent, templates)
         if not best_template:
@@ -141,7 +176,7 @@ def generate_marketing_image(mls_id: str, user_intent: str) -> Dict[str, Any]:
             return {
                 "status": "needs_info",
                 "message_for_user": user_message, 
-                "context": {"mls_id": mls_id, "template_uid": best_template['uid']}
+                "context": {"mls_listing_id": mls_listing_id, "mls_id": mls_id, "template_uid": best_template['uid']}
             }
 
         # --- If no info is missing, proceed with generation ---
@@ -155,22 +190,27 @@ def generate_marketing_image(mls_id: str, user_intent: str) -> Dict[str, Any]:
         if not final_image or not (bb_url := final_image.get("image_url_png")):
             return {"status": "error", "message_for_user": "The final image rendering failed."}
             
-        permanent_url = api_services.upload_image(bb_url)
+        # permanent_url = api_services.upload_image(bb_url)
+        # return {
+        #     "status": "image_generated",
+        #     "message_for_user": f"Using the '{best_template['name']}' template, here is the design I created for you!\n\n![Generated Ad]({permanent_url})"
+        # }
         return {
             "status": "image_generated",
-            "message_for_user": f"Using the '{best_template['name']}' template, here is the design I created for you!\n\n![Generated Ad]({permanent_url})"
+            "message_for_user": f"Using the '{best_template['name']}' template, here is the design I created for you!\n\n![Generated Ad]({bb_url})"
         }
 
     except Exception as e:
         return {"status": "error", "message_for_user": f"A critical error occurred: {e}"}
 
 class CompleteAdInput(BaseModel):
-    mls_id: str = Field(description="The original MLS ID of the property, retrieved from the context of the previous step.")
+    mls_listing_id: str = Field(description="The original MLS Listing ID of the property, retrieved from the context of the previous step.")
+    mls_id: str = Field(description="The 3-digit ID for the regional MLS, retrieved from the context of the previous step.")
     template_uid: str = Field(description="The UID of the template selected in the first step, retrieved from the context.")
     user_provided_data: Dict[str, str] = Field(description="A dictionary mapping the layer names (e.g., 'open_house_date') to the information the user provided in the conversation.")
 
 @tool(args_schema=CompleteAdInput)
-def complete_marketing_image(mls_id: str, template_uid: str, user_provided_data: Dict[str, str]) -> Dict[str, Any]:
+def complete_marketing_image(mls_listing_id: str, mls_id: str, template_uid: str, user_provided_data: Dict[str, str]) -> Dict[str, Any]:
     """
     Use this tool to generate a marketing image AFTER you have already asked the user for missing information and they have provided it.
     This tool combines the original property data with the new user-provided details to create the final image.
@@ -178,8 +218,8 @@ def complete_marketing_image(mls_id: str, template_uid: str, user_provided_data:
     try:
         api_key = os.environ["BANNERBEAR_API_KEY"]
         
-        property_data = api_services.fetch_realty_details(mls_id)
-        if not property_data: return {"status": "error", "message_for_user": f"I couldn't re-fetch data for MLS ID {mls_id}."}
+        property_data = api_services.fetch_realty_details(mls_listing_id, mls_id)
+        if not property_data: return {"status": "error", "message_for_user": f"I couldn't re-fetch data for MLS Listing ID {mls_listing_id}."}
 
         # Merge original data with new user-provided data
         merged_data = property_data.copy()
@@ -199,10 +239,14 @@ def complete_marketing_image(mls_id: str, template_uid: str, user_provided_data:
         if not final_image or not (bb_url := final_image.get("image_url_png")):
             return {"status": "error", "message_for_user": "The final image rendering failed."}
             
-        permanent_url = api_services.upload_image(bb_url)
+        # permanent_url = api_services.upload_image(bb_url)
+        # return {
+        #     "status": "image_generated",
+        #     "message_for_user": f"Perfect! Using your details with the '{template['name']}' template, here is the final design:\n\n![Generated Ad]({permanent_url})"
+        # }
         return {
             "status": "image_generated",
-            "message_for_user": f"Perfect! Using your details with the '{template['name']}' template, here is the final design:\n\n![Generated Ad]({permanent_url})"
+            "message_for_user": f"Using the '{template['name']}' template, here is the design I created for you!\n\n![Generated Ad]({bb_url})"
         }
     except Exception as e:
         return {"status": "error", "message_for_user": f"A critical error occurred while finalizing your image: {e}"}

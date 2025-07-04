@@ -10,7 +10,7 @@ This README is designed to be a complete guide, including the necessary backgrou
 
 This project is a Django-powered backend service that provides a conversational AI agent for real estate professionals at "Realty of America." The agent's primary purpose is to assist in the creation of professional marketing images (e.g., "Just Listed" ads, "Open House" flyers) with minimal user effort.
 
-The agent engages in a natural conversation to gather necessary details like the property's MLS ID and the user's intent. It intelligently handles multi-step interactions where additional information (like an open house date) is required. The system uses a persistent, threaded conversation model, allowing users to continue their work across multiple API calls without resending the entire chat history.
+The agent engages in a natural conversation to gather necessary details like the property's MLS Listing ID and the user's intent. It intelligently handles multi-step interactions where additional information (like an open house date) is required. The system uses a persistent, threaded conversation model, allowing users to continue their work across multiple API calls without resending the entire chat history.
 
 ## Key Features
 
@@ -222,7 +222,7 @@ To begin a conversation, send a request without a `thread_id`.
 
 ```json
 {
-    "user_input": "I need to create an open house ad for MLS ID 12345."
+    "user_input": "I need to create an open house ad for MLS Listing ID 12345."
 }
 ```
 
