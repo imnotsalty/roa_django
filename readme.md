@@ -1,8 +1,3 @@
-Of course. Here is a comprehensive `README.md` file for your project.
-
-This README is designed to be a complete guide, including the necessary background, installation instructions, API usage, and a special section detailing the troubleshooting steps we worked through. This will be invaluable for anyone (including your future self) setting up the project from scratch.
-
----
 
 # AI Real Estate Marketing Designer
 
@@ -14,21 +9,21 @@ The agent engages in a natural conversation to gather necessary details like the
 
 ## Key Features
 
--   **Conversational AI:** Utilizes LangChain and Google's Gemini models to understand user intent and drive the conversation.
--   **Dynamic Image Generation:** Integrates with the Bannerbear API to create customized marketing images based on real-time property data and user input.
--   **Stateful, Threaded Conversations:** Uses a PostgreSQL database to maintain conversation history and context, allowing for a seamless user experience via a simple `thread_id`.
--   **Asynchronous Task Handling:** Built with Celery and Redis to offload long-running tasks (like API calls to AI services and image renderers), ensuring the main web server remains responsive.
--   **Robust and Scalable:** Based on the `cookiecutter-drf` template, providing a solid foundation with best practices for production environments.
+- **Conversational AI:** Utilizes LangChain and Google's Gemini models to understand user intent and drive the conversation.
+- **Dynamic Image Generation:** Integrates with the Bannerbear API to create customized marketing images based on real-time property data and user input.
+- **Stateful, Threaded Conversations:** Uses a PostgreSQL database to maintain conversation history and context, allowing for a seamless user experience via a simple `thread_id`.
+- **Asynchronous Task Handling:** Built with Celery and Redis to offload long-running tasks (like API calls to AI services and image renderers), ensuring the main web server remains responsive.
+- **Robust and Scalable:** Based on the `cookiecutter-drf` template, providing a solid foundation with best practices for production environments.
 
 ## Technology Stack
 
--   **Backend:** Django, Django REST Framework
--   **AI Orchestration:** LangChain
--   **Language Model:** Google Gemini
--   **Database:** PostgreSQL
--   **Task Queue:** Celery
--   **Message Broker:** Redis
--   **External APIs:** Bannerbear (Image Generation), Freeimage.host (Image Upload)
+- **Backend:** Django, Django REST Framework
+- **AI Orchestration:** LangChain
+- **Language Model:** Google Gemini
+- **Database:** PostgreSQL
+- **Task Queue:** Celery
+- **Message Broker:** Redis
+- **External APIs:** Bannerbear (Image Generation), Freeimage.host (Image Upload)
 
 ---
 
@@ -36,22 +31,22 @@ The agent engages in a natural conversation to gather necessary details like the
 
 Before you begin, ensure you have the following installed on your system (these instructions are tailored for Debian/Ubuntu-based systems like Zorin OS):
 
-1.  **Python 3.10+**
-2.  **PostgreSQL Server:**
-    ```bash
-    sudo apt update
-    sudo apt install postgresql postgresql-contrib libpq-dev
-    ```
-3.  **Redis Server:**
-    ```bash
-    sudo apt install redis-server
-    ```
-4.  **API Client:** A tool like [Postman](https://www.postman.com/downloads/) for testing the API endpoints.
-5.  **API Keys:** You will need to sign up for and obtain keys from the following services:
-    -   Google AI (for Gemini)
-    -   Bannerbear
-    -   Realty of America (Your internal API endpoint)
-    -   Freeimage.host (Optional, for permanent image URLs)
+1. **Python 3.10+**
+2. **PostgreSQL Server:**
+   ```bash
+   sudo apt update
+   sudo apt install postgresql postgresql-contrib libpq-dev
+   ```
+3. **Redis Server:**
+   ```bash
+   sudo apt install redis-server
+   ```
+4. **API Client:** A tool like [Postman](https://www.postman.com/downloads/) for testing the API endpoints.
+5. **API Keys:** You will need to sign up for and obtain keys from the following services:
+   - Google AI (for Gemini)
+   - Bannerbear
+   - Realty of America (Your internal API endpoint)
+   - Freeimage.host (Optional, for permanent image URLs)
 
 ---
 
@@ -188,6 +183,7 @@ source venv/bin/activate
 # Start the worker
 celery -A config.celery_app worker -l info
 ```
+
 *(Note: If your main project folder is named `roa_django` instead of `config`, use `celery -A roa_django.celery_app worker -l info`)*
 
 ### Terminal 3: Start the Django Server
@@ -210,9 +206,9 @@ Your API is now running and accessible at `http://127.0.0.1:8000`.
 
 ### Endpoint
 
--   **URL:** `http://127.0.0.1:8000/api/v1/ai-designer/chat/`
--   **Method:** `POST`
--   **Headers:** `Content-Type: application/json`
+- **URL:** `http://127.0.0.1:8000/api/v1/ai-designer/chat/`
+- **Method:** `POST`
+- **Headers:** `Content-Type: application/json`
 
 ### Scenario 1: Starting a New Conversation
 
@@ -237,6 +233,7 @@ The server creates a new conversation thread and returns a `thread_id`. The agen
     "thread_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef"
 }
 ```
+
 **Important:** Copy the `thread_id` from the response for the next step.
 
 ### Scenario 2: Continuing the Conversation
@@ -272,25 +269,24 @@ During development, we encountered several common setup issues. This section doc
 
 ### 1. The `ModuleNotFoundError: No module named 'celery'` Error
 
--   **Context:** This error occurs when first running `python manage.py runserver` after setting up the project.
--   **Reason:** The `cookiecutter-drf` template is pre-configured to use Celery for background tasks, which is a best practice for applications with long-running processes (like AI API calls). The project attempts to import `celery` on startup, but the package hasn't been installed yet.
--   **Solution:** Install `celery` and its message broker, `redis`, and run the worker as a separate process. The full installation steps are covered in the main guide.
+- **Context:** This error occurs when first running `python manage.py runserver` after setting up the project.
+- **Reason:** The `cookiecutter-drf` template is pre-configured to use Celery for background tasks, which is a best practice for applications with long-running processes (like AI API calls). The project attempts to import `celery` on startup, but the package hasn't been installed yet.
+- **Solution:** Install `celery` and its message broker, `redis`, and run the worker as a separate process. The full installation steps are covered in the main guide.
 
 ### 2. The `AttributeError: 'NoneType' object has no attribute 'Redis'` Error
 
--   **Context:** This error occurs when trying to start the Celery worker (`celery -A ... worker ...`) even after installing the `celery` and `redis` packages.
--   **Reason:** This is a classic dependency version mismatch. The latest versions of the `redis` Python library (v4.x and newer) are not compatible with the version of `kombu` (a Celery dependency) that is installed. `kombu` expects the API from the older `redis` v3.x series.
--   **Solution:** Pin the `redis` library to a known compatible version. We must uninstall the new version and install the specific older one.
-    ```bash
-    # Uninstall the incompatible version
-    pip uninstall redis
+- **Context:** This error occurs when trying to start the Celery worker (`celery -A ... worker ...`) even after installing the `celery` and `redis` packages.
+- **Reason:** This is a classic dependency version mismatch. The latest versions of the `redis` Python library (v4.x and newer) are not compatible with the version of `kombu` (a Celery dependency) that is installed. `kombu` expects the API from the older `redis` v3.x series.
+- **Solution:** Pin the `redis` library to a known compatible version. We must uninstall the new version and install the specific older one.
+  ```bash
+  # Uninstall the incompatible version
+  pip uninstall redis
 
-    # Install the compatible version
-    pip install redis==3.5.3
-    ```
-    This is why the `requirements.txt` file explicitly lists `redis==3.5.3`.
+  # Install the compatible version
+  pip install redis==3.5.3
+  ```
 
-
+  This is why the `requirements.txt` file explicitly lists `redis==3.5.3`.
 
 Local run:
 celery -A config.celery_app worker -l info

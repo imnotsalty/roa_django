@@ -1,59 +1,69 @@
+# agent_setup.py
 import os
-import json
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate
-from .agent_tools import generate_marketing_image, complete_marketing_image, list_available_designs
+
+# Import the single tool and api_services to fetch designs on startup
+from .agent_tools import generate_marketing_image
+from . import api_services
 
 load_dotenv()
 
-# --- PROMPT REMAINS THE SAME ---
+# --- FETCH AVAILABLE DESIGNS ON STARTUP ---
+# This makes the agent aware of designs without needing a tool call.
+try:
+    API_KEY = os.environ["BANNERBEAR_API_KEY"]
+    TEMPLATES = api_services.fetch_all_template_details(API_KEY)
+    AVAILABLE_DESIGNS = "\n".join([f"- {t['name']}" for t in TEMPLATES])
+except Exception as e:
+    print(f"CRITICAL: Could not fetch BannerBear templates on startup. Error: {e}")
+    AVAILABLE_DESIGNS = "Could not load designs. There might be a configuration issue."
+
+# --- NEW, HIGHLY-DIRECTIVE PROMPT ---
 prompt = ChatPromptTemplate.from_messages([
-    ("system", """
+    ("system", f"""
     You are a professional and highly capable design assistant for Realty of America. Your purpose is to help real estate agents create marketing materials by generating images.
 
-    **Your Primary Goal:**
-    Your main goal is to generate a marketing image. The user will provide their intent (e.g., "a just listed ad"), the property MLS Listing ID, and the regional property MLS ID.
+    **Your Workflow:**
+    Your goal is to collect three pieces of information from the user before you can act:
+    1. The design they want to create.
+    2. The property's MLS Listing ID.
+    3. The property's 3-digit regional MLS ID.
+
+    **Available Designs:**
+    Here are the marketing designs you can create:
+    {AVAILABLE_DESIGNS}
 
     ---
-    **CRITICAL WORKFLOW RULE: DO NOT ASK FOR PROPERTY DETAILS**
-    If you are given an MLS Listing ID and an MLS ID, you MUST NOT ask the user for property details like price, address, photos, or key features.
-    The `generate_marketing_image` tool is designed to automatically fetch all of this information from the database using the MLS Listing ID and MLS ID.
-    Your ONLY job is to take the user's intent, the MLS Listing ID, and the MLS ID and immediately call the `generate_marketing_image` tool.
-    ---
+    **CRITICAL CONVERSATION RULES:**
 
-    **Handling Missing Information (The ONLY time you ask questions):**
-    Some designs require information that is impossible to know from property data (like a date for an 'Open House').
+    1.  **GATHER INFORMATION FIRST:** Your primary job is to gather the three required pieces of information (Design Name, MLS Listing ID, MLS ID). Ask for them conversationally. If the user provides everything at once, great. If not, ask for the missing pieces. For example, if they only provide an MLS ID, ask them which design they'd like and what the MLS Listing ID is.
 
-    - **STEP 1: Initial Call**
-      - When you call `generate_marketing_image`, it will check if more information is needed.
-      - If it IS needed, the tool will return a `status: 'needs_info'` and a pre-formatted `message_for_user`.
-      - **Your job is to simply relay this `message_for_user` directly to the user and then wait for their response.** Do not change it.
+    2.  **DO NOT USE A TOOL UNTIL READY:** You have one tool: `generate_marketing_image`. You MUST NOT call this tool until you have all three pieces of information.
 
-    - **STEP 2: Follow-up Call**
-      - After the user responds with the requested information (e.g., "The open house is Saturday from 2-4 PM").
-      - You **MUST** then call the `complete_marketing_image` tool to finalize the image.
+    3.  **DO NOT ASK FOR PROPERTY DETAILS:** Never ask for the property address, price, photos, or features. The tool gets all of that automatically from the MLS IDs.
 
-    **Other Tools:**
-    - If the user asks what you can create, use the `list_available_designs` tool.
+    4.  **HANDLING FOLLOW-UP QUESTIONS:**
+        - Sometimes, a specific design (like 'Open House') needs extra info that isn't in the MLS data (like a date/time).
+        - In this case, your first call to `generate_marketing_image` will fail and the tool will return a message asking for that specific info.
+        - Your job is to **simply relay this message to the user**.
+        - Once the user replies with the needed info (e.g., "The open house is Saturday from 2-4 PM"), you will call the `generate_marketing_image` tool **again**, but this time you will include the user's answer in the `user_provided_data` argument.
     """),
     ("placeholder", "{chat_history}"),
     ("human", "{input}"),
     ("placeholder", "{agent_scratchpad}"),
 ])
 
-tools = [generate_marketing_image, complete_marketing_image, list_available_designs]
+# --- AGENT SETUP WITH A SINGLE TOOL ---
+tools = [generate_marketing_image]
 
-# --- CORRECTED ORDER OF DEFINITIONS ---
-# 1. Define the LLM
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.1, convert_system_message_to_human=True)
 
-# 2. Create the agent (which needs the llm and tools)
 agent = create_tool_calling_agent(llm, tools, prompt)
 
-# 3. Create the agent executor (which needs the agent and tools)
 agent_executor = AgentExecutor(
     agent=agent, 
     tools=tools, 
@@ -62,7 +72,8 @@ agent_executor = AgentExecutor(
     return_intermediate_steps=True
 )
 
-# --- UPDATED CONVERSATION RUNNER (No changes here) ---
+
+# --- CONVERSATION RUNNER (No changes needed, but simplified internally) ---
 def run_agent_conversation(user_input: str, history_list: list, agent_context: dict) -> (str, dict):
     """
     Runs a single turn of the conversation with the LangChain agent.
@@ -73,35 +84,39 @@ def run_agent_conversation(user_input: str, history_list: list, agent_context: d
         if msg.get("role") == "user":
             chat_history.append(HumanMessage(content=msg["content"]))
         elif msg.get("role") == "assistant":
-            chat_history.append(AIMessage(content=msg["content"]))
+            # If the assistant's last message was a request for info,
+            # we must also include the tool's context in the history for the LLM.
+            # This is a more advanced (but correct) way to handle multi-step tool use.
+            content = msg["content"]
+            if "context" in msg:
+                 content += f"\n\n[Internal Note: The current context is {msg['context']}]"
+            chat_history.append(AIMessage(content=content))
 
     try:
-        response = agent_executor.invoke({
-            "input": user_input,
-            "chat_history": chat_history
-        })
+        # The agent_context from the previous turn contains the necessary details
+        # for the 'user_provided_data' argument in the follow-up tool call.
+        # We merge it with the user input to help the agent make the right call.
+        # This helps the agent remember the context from the `needs_info` step.
+        invoke_input = {"input": user_input, "chat_history": chat_history}
+        if agent_context:
+            invoke_input['input'] += f"\n\n[Internal Context for Tool Call: {json.dumps(agent_context)}]"
 
-        # *** NEW LOGIC TO INTERCEPT TOOL OUTPUT ***
-        # Check if a tool was run and returned our specific dictionary structure.
+
+        response = agent_executor.invoke(invoke_input)
+
+        # Intercept tool output to handle custom responses ("needs_info", "image_generated", etc.)
         if "intermediate_steps" in response and response["intermediate_steps"]:
-            # The tool's output is the second item in the last tuple of intermediate_steps
             last_tool_output = response["intermediate_steps"][-1][1]
 
             if isinstance(last_tool_output, dict) and "message_for_user" in last_tool_output:
-                # If it's our structured output, use it directly!
                 message = last_tool_output["message_for_user"]
-                new_context = last_tool_output.get("context", {})
+                # Persist the context if the tool needs more info
+                new_context = last_tool_output.get("context", {}) 
                 return (message, new_context)
-            
-            elif isinstance(last_tool_output, dict) and last_tool_output.get("success"):
-                 # Handle the list_available_designs tool output
-                 designs = "\n".join([f"- {name}" for name in last_tool_output.get("designs", [])])
-                 message = f"I can create the following designs for you:\n\n{designs}"
-                 return (message, {})
 
-        # If no tool was run or it didn't return our specific format, fall back to the agent's final answer.
+        # If no special tool output, return the agent's final answer.
         message = response.get("output", "I'm sorry, I had trouble processing that.")
-        return (message, {})
+        return (message, {}) # Clear context after a successful final response
 
     except Exception as e:
         print(f"A critical error occurred in the agent executor: {e}")
