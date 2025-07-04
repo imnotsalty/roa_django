@@ -6,10 +6,12 @@ from langchain.tools import tool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from . import api_services # Use relative import
 
+AI_MODEL = "gemini-2.0-flash"
+
 # --- HELPER FUNCTIONS (UNCHANGED) ---
 def _create_modifications_with_llm(property_data: dict, template: dict) -> List[Dict[str, Any]]:
     """Helper function to use an LLM for intelligent data mapping."""
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.0)
+    llm = ChatGoogleGenerativeAI(model=AI_MODEL, temperature=0.0)
     modifiable_layers = template.get('available_modifications', [])
     prompt = f"""
     You are an expert data mapper for a real estate design tool. Your only job is to create a JSON list of modifications by mapping the provided PROPERTY DATA to the modifiable LAYERS of the provided TEMPLATE.
@@ -38,7 +40,7 @@ def _create_modifications_with_llm(property_data: dict, template: dict) -> List[
     Instructions:
     1.  Create a JSON list of "modifications". Each modification is an object with "name" and "text" or "image_url".
     2.  Use the `DATA MAPPING GUIDE` and the live `PROPERTY DATA` to find the correct values.
-    3.  If `PROPERTY DATA` contains extra user-provided fields (like `open_house_date`), map them to corresponding template layers.
+    3.  If `PROPERTY DATA` contains extra user-provided fields, map them to corresponding template layers.
     4.  If a value isn't available, omit that layer.
     5.  Respond ONLY with the raw JSON list. Do not add explanations or markdown.
     """
@@ -50,19 +52,19 @@ def _create_modifications_with_llm(property_data: dict, template: dict) -> List[
         print(f"Error during LLM mapping: {e}")
         return []
 
-def _get_missing_fields(template: dict, property_data: dict) -> Dict[str, str]:
-    """Identifies required template fields that are not present in the property data."""
-    potential_user_fields = {
-        "open_house_date": "the date of the open house (e.g., 'Saturday, June 15th')",
-        "open_house_time": "the time of the open house (e.g., '2-4 PM')",
-        "custom_headline": "a custom headline for the ad",
-    }
-    missing_fields = {}
-    template_layer_names = [mod['name'] for mod in template.get('available_modifications', [])]
-    for field_key, field_description in potential_user_fields.items():
-        if field_key in template_layer_names and field_key not in property_data:
-            missing_fields[field_key] = field_description
-    return missing_fields
+# def _get_missing_fields(template: dict, property_data: dict) -> Dict[str, str]:
+#     """Identifies required template fields that are not present in the property data."""
+#     potential_user_fields = {
+#         "open_house_date": "the date of the open house (e.g., 'Saturday, June 15th')",
+#         "open_house_time": "the time of the open house (e.g., '2-4 PM')",
+#         "custom_headline": "a custom headline for the ad",
+#     }
+#     missing_fields = {}
+#     template_layer_names = [mod['name'] for mod in template.get('available_modifications', [])]
+#     for field_key, field_description in potential_user_fields.items():
+#         if field_key in template_layer_names and field_key not in property_data:
+#             missing_fields[field_key] = field_description
+#     return missing_fields
 
 
 # --- THE SINGLE, CONSOLIDATED TOOL ---
@@ -71,12 +73,12 @@ class GenerateImageInput(BaseModel):
     mls_listing_id: str = Field(description="The unique Multiple Listing Service ID for the property.")
     mls_id: str = Field(description = "The 3-digit ID that represents all the listings in a specific region.")
     template_name: str = Field(description="The exact name of the design template chosen by the user.")
-    user_provided_data: Optional[Dict[str, str]] = Field(None, description="A dictionary of extra information provided by the user after being prompted, e.g., {'open_house_date': 'Saturday at 2 PM'}.")
+    user_provided_data: Optional[Dict[str, str]] = Field(None, description="A dictionary of extra information provided by the user after being prompted, e.g., {'date': 'Saturday at 2 PM'}.")
 
 @tool(args_schema=GenerateImageInput)
 def generate_marketing_image(mls_listing_id: str, mls_id: str, template_name: str, user_provided_data: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     """
-    Generates a marketing image for a property. This single tool handles the entire generation process. It will fetch property data using the MLS details and the chosen template. If the template requires extra information (like an open house date), it will return a message asking for it. If all information is present, it will create and return the final image.
+    Generates a marketing image for a property. This single tool handles the entire generation process. It will automatically fetch property data using the MLS details and the chosen template. If the template requires extra information, it will return a message asking for it. If all information is present, it will create and return the final image.
     """
     try:
         api_key = os.environ["BANNERBEAR_API_KEY"]
@@ -98,20 +100,20 @@ def generate_marketing_image(mls_listing_id: str, mls_id: str, template_name: st
             property_data.update(user_provided_data)
 
         # 4. Check if the template still requires info the user hasn't provided yet
-        missing_fields = _get_missing_fields(selected_template, property_data)
-        if missing_fields:
-            field_list = " and ".join(list(missing_fields.values()))
-            user_message = f"To complete the '{selected_template['name']}' design, I just need a bit more information: {field_list}. Can you provide that for me?"
+        # missing_fields = _get_missing_fields(selected_template, property_data)
+        # if missing_fields:
+        #     field_list = " and ".join(list(missing_fields.values()))
+        #     user_message = f"To complete the '{selected_template['name']}' design, I just need a bit more information: {field_list}. Can you provide that for me?"
             
-            return {
-                "status": "needs_info",
-                "message_for_user": user_message, 
-                "context": {
-                    "mls_listing_id": mls_listing_id, 
-                    "mls_id": mls_id, 
-                    "template_name": selected_template['name'] # Pass the exact name for the next call
-                }
-            }
+        #     return {
+        #         "status": "needs_info",
+        #         "message_for_user": user_message, 
+        #         "context": {
+        #             "mls_listing_id": mls_listing_id, 
+        #             "mls_id": mls_id, 
+        #             "template_name": selected_template['name'] # Pass the exact name for the next call
+        #         }
+        #     }
 
         # 5. If all info is present, proceed with generation
         modifications = _create_modifications_with_llm(property_data, selected_template)

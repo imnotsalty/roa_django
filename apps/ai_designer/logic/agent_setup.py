@@ -12,6 +12,8 @@ from . import api_services
 
 load_dotenv()
 
+AI_MODEL = "gemini-2.0-flash"
+
 # --- FETCH AVAILABLE DESIGNS ON STARTUP ---
 # This makes the agent aware of designs without needing a tool call.
 try:
@@ -46,11 +48,6 @@ prompt = ChatPromptTemplate.from_messages([
 
     3.  **DO NOT ASK FOR PROPERTY DETAILS:** Never ask for the property address, price, photos, or features. The tool gets all of that automatically from the MLS IDs.
 
-    4.  **HANDLING FOLLOW-UP QUESTIONS:**
-        - Sometimes, a specific design (like 'Open House') needs extra info that isn't in the MLS data (like a date/time).
-        - In this case, your first call to `generate_marketing_image` will fail and the tool will return a message asking for that specific info.
-        - Your job is to **simply relay this message to the user**.
-        - Once the user replies with the needed info (e.g., "The open house is Saturday from 2-4 PM"), you will call the `generate_marketing_image` tool **again**, but this time you will include the user's answer in the `user_provided_data` argument.
     """),
     ("placeholder", "{chat_history}"),
     ("human", "{input}"),
@@ -60,7 +57,7 @@ prompt = ChatPromptTemplate.from_messages([
 # --- AGENT SETUP WITH A SINGLE TOOL ---
 tools = [generate_marketing_image]
 
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.1, convert_system_message_to_human=True)
+llm = ChatGoogleGenerativeAI(model=AI_MODEL, temperature=0.1)
 
 agent = create_tool_calling_agent(llm, tools, prompt)
 
